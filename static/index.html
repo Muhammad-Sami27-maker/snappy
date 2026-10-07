@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f2b46">
+<title>Grab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f2efe6;--ink:#0f2b46;--muted:#5b6b7a;--line:#cfd6dc;--pop:#ff5a36;--card:#fffdf7}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1c2e;--ink:#f2efe6;--muted:#98a8b6;--line:#2a4058;--pop:#ff7a5c;--card:#12283f}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Bricolage Grotesque",system-ui,sans-serif}
+main{max-width:520px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 40px) 20px calc(env(safe-area-inset-bottom,0px) + 32px)}
+h1{font-size:clamp(2.6rem,12vw,3.6rem);font-weight:800;letter-spacing:-.03em;line-height:.95;margin:0 0 10px}
+.sub{color:var(--muted);margin:0 0 28px;max-width:30ch}
+.paste{display:flex;gap:8px}
+input{flex:1;min-width:0;font:inherit;font-size:16px;padding:16px;border:2px solid var(--ink);border-radius:14px;background:var(--card);color:var(--ink)}
+button{font:inherit;font-weight:600;cursor:pointer}
+.go{padding:0 20px;border:0;border-radius:14px;background:var(--pop);color:#fff}
+button:focus-visible,input:focus-visible{outline:3px solid var(--pop);outline-offset:2px}
+#out{margin-top:24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.card img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:var(--line)}
+.body{padding:16px}
+.title{font-weight:600;margin:0 0 4px}
+.meta{color:var(--muted);font-size:.9rem;margin:0 0 14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:12px 18px;border-radius:999px;border:2px solid var(--ink);background:transparent;color:var(--ink)}
+.chip:first-child{background:var(--ink);color:var(--bg)}
+.msg{color:var(--muted)}
+.err{color:var(--pop);font-weight:600}
+.left{margin-top:14px;color:var(--muted);font-size:.85rem}
+</style>
+</head>
+<body>
+<main>
+  <h1>Paste a link.<br>Get the video.</h1>
+  <p class="sub">Save videos you have the right to download straight to your iPhone.</p>
+  <div class="paste">
+    <input id="url" type="url" inputmode="url" placeholder="https://" aria-label="Video link" autocapitalize="off" autocorrect="off">
+    <button class="go" id="go">Fetch</button>
+  </div>
+  <div id="out" aria-live="polite"></div>
+</main>
+<script>
+const $ = id => document.getElementById(id), out = $("out");
+const fmt = s => s ? Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0") : "";
+function esc(t){const d=document.createElement("div");d.textContent=t??"";return d.innerHTML}
+
+async function fetchInfo(){
+  const url = $("url").value.trim();
+  if(!url) return;
+  out.innerHTML = '<p class="msg">Reading link…</p>';
+  try{
+    const r = await fetch("/api/info",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url})});
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.detail);
+    const chips = d.remaining > 0
+      ? (d.heights.length ? d.heights : [null]).map(h =>
+          `<button class="chip" data-h="${h??""}">${h ? h+"p" : "Best quality"}</button>`).join("")
+      : '<p class="err">You\'ve used today\'s free downloads. Upgrade for unlimited.</p>';
+    out.innerHTML = `<div class="card">${d.thumbnail?`<img src="${esc(d.thumbnail)}" alt="">`:""}
+      <div class="body"><p class="title">${esc(d.title)}</p><p class="meta">${fmt(d.duration)}</p>
+      <div class="chips">${chips}</div></div></div>
+      <p class="left">${d.remaining} free download${d.remaining===1?"":"s"} left today</p>`;
+    out.querySelectorAll(".chip").forEach(b => b.onclick = () => {
+      const q = new URLSearchParams({url}); if(b.dataset.h) q.set("height", b.dataset.h);
+      b.textContent = "Preparing…";
+      location.href = "/api/download?" + q;
+    });
+  }catch(e){ out.innerHTML = `<p class="err">${esc(e.message || "Something went wrong")}</p>`; }
+}
+$("go").onclick = fetchInfo;
+$("url").addEventListener("keydown", e => e.key==="Enter" && fetchInfo());
+</script>
+</body>
+</html>
